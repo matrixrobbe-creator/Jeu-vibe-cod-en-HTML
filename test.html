@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Course Nocturne - E39 Edition</title>
+    <title>Course Nocturne - Garage E39 Edition</title>
     <style>
         body {
             background-color: #1a1a1a;
@@ -30,7 +30,7 @@
 <body>
 
     <h1>Course Nocturne</h1>
-    <p>Fais chanter le 6 cylindres (M52B20TU) et évite le trafic !</p>
+    <p>Fais chanter le 6 cylindres (M52B20TU), gagne des crédits et customise ton bolide !</p>
     
     <div class="game-container">
         <canvas id="gameCanvas" width="400" height="600"></canvas>
@@ -44,7 +44,33 @@
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
 
-        // Gestion Audio Web API
+        // États du jeu : 'MENU', 'GARAGE', 'PLAYING', 'GAMEOVER'
+        let gameState = 'MENU';
+
+        // Données du joueur & Sauvegarde (localStorage)
+        let money = parseInt(localStorage.getItem("e39_money")) || 150;
+        let highScore = parseInt(localStorage.getItem("e39_high_score")) || 0;
+        
+        let unlockedCars = JSON.parse(localStorage.getItem("e39_unlocked_cars")) || ["Oxford Green"];
+        let currentCar = localStorage.getItem("e39_current_car") || "Oxford Green";
+
+        let unlockedRoads = JSON.parse(localStorage.getItem("e39_unlocked_roads")) || ["Nuit Classique"];
+        let currentRoad = localStorage.getItem("e39_current_road") || "Nuit Classique";
+
+        const carsData = {
+            "Oxford Green": { color: "#1b3022", price: 0 },
+            "Imolarot Red": { color: "#990000", price: 200 },
+            "Titanium Silver": { color: "#C0C0C0", price: 350 },
+            "Cosmos Black": { color: "#111111", price: 500 }
+        };
+
+        const roadsData = {
+            "Nuit Classique": { asphalt: "#333", grass: "#1a4d1a", price: 0 },
+            "Sunset Highway": { asphalt: "#4a3b5c", grass: "#5c1a1a", price: 300 },
+            "Neon Cyber": { asphalt: "#111a2e", grass: "#0d003b", price: 600 }
+        };
+
+        // Audio Web API
         let audioCtx = null;
         function initAudio() {
             if (!audioCtx) {
@@ -75,22 +101,21 @@
                 gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
                 osc.start();
                 osc.stop(audioCtx.currentTime + 0.2);
+            } else if (type === 'buy') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
             }
         }
 
-        // Paramètres de la voiture du joueur
-        let player = {
-            x: 175,
-            y: 480,
-            width: 45,
-            height: 80,
-            speed: 6
-        };
-
+        let player = { x: 175, y: 480, width: 45, height: 80, speed: 6 };
         let traffic = [];
         let score = 0;
-        let highScore = localStorage.getItem("e39_high_score") || 0;
-        let isGameOver = false;
+        let earnedMoney = 0;
         let gameSpeed = 4;
         let isBoosting = false;
 
@@ -98,22 +123,32 @@
         window.addEventListener("keydown", (e) => { 
             keys[e.key] = true; 
             initAudio();
-            if (e.key === " " && !isBoosting && !isGameOver) {
+            if (e.key === " " && !isBoosting && gameState === 'PLAYING') {
                 isBoosting = true;
                 playSound('boost');
-                setTimeout(() => { isBoosting = false; }, 800); // Boost de 0.8s
+                setTimeout(() => { isBoosting = false; }, 800);
             }
         });
         window.addEventListener("keyup", (e) => { keys[e.key] = false; });
 
-        // Dessin de la E39 (Oxford Green)
+        function saveGame() {
+            localStorage.setItem("e39_money", money);
+            localStorage.setItem("e39_high_score", highScore);
+            localStorage.setItem("e39_unlocked_cars", JSON.stringify(unlockedCars));
+            localStorage.setItem("e39_current_car", currentCar);
+            localStorage.setItem("e39_unlocked_roads", JSON.stringify(unlockedRoads));
+            localStorage.setItem("e39_current_road", currentRoad);
+        }
+
         function drawPlayer() {
+            let bodyColor = carsData[currentCar].color;
+
             if (isBoosting) {
                 ctx.fillStyle = "rgba(135, 206, 250, 0.4)";
                 ctx.fillRect(player.x - 4, player.y + 10, player.width + 8, player.height + 15);
             }
 
-            ctx.fillStyle = "#1b3022"; 
+            ctx.fillStyle = bodyColor; 
             ctx.fillRect(player.x, player.y, player.width, player.height);
             
             ctx.fillStyle = "#111";
@@ -147,20 +182,20 @@
             });
         }
 
-        function update() {
-            if (isGameOver) return;
+        function updateGame() {
+            if (gameState !== 'PLAYING') return;
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Route & Accotements
-            ctx.fillStyle = "#333";
+            let roadInfo = roadsData[currentRoad];
+
+            ctx.fillStyle = roadInfo.asphalt;
             ctx.fillRect(30, 0, canvas.width - 60, canvas.height);
 
-            ctx.fillStyle = "#1a4d1a";
+            ctx.fillStyle = roadInfo.grass;
             ctx.fillRect(0, 0, 30, canvas.height);
             ctx.fillRect(canvas.width - 30, 0, 30, canvas.height);
 
-            // Lignes de route animées
             let currentSpeed = isBoosting ? gameSpeed * 2.2 : gameSpeed;
             ctx.strokeStyle = "#fff";
             ctx.setLineDash([25, 25]);
@@ -172,7 +207,6 @@
             ctx.beginPath();
             ctx.moveTo(220, 0); ctx.lineTo(220, canvas.height); ctx.stroke();
 
-            // Mouvements joueur
             let currentMoveSpeed = isBoosting ? player.speed * 1.6 : player.speed;
             if ((keys["ArrowLeft"] || keys["q"] || keys["Q"]) && player.x > 35) {
                 player.x -= currentMoveSpeed;
@@ -183,7 +217,6 @@
 
             drawPlayer();
 
-            // Trafic
             for (let i = 0; i < traffic.length; i++) {
                 let car = traffic[i];
                 car.y += currentSpeed;
@@ -194,17 +227,20 @@
                 ctx.fillStyle = "#222";
                 ctx.fillRect(car.x + 5, car.y + 20, car.width - 10, 20);
 
-                // Collision
                 if (player.x < car.x + car.width &&
                     player.x + player.width > car.x &&
                     player.y < car.y + car.height &&
                     player.y + player.height > car.y) {
-                    isGameOver = true;
+                    gameState = 'GAMEOVER';
                     playSound('crash');
+                    
+                    earnedMoney = Math.floor(score / 5);
+                    money += earnedMoney;
                     if (score > highScore) {
                         highScore = score;
                         localStorage.setItem("e39_high_score", highScore);
                     }
+                    saveGame();
                 }
             }
 
@@ -217,83 +253,233 @@
                 return true;
             });
 
-            // Affichage HUD
+            // HUD en jeu (correction des coordonnées pour éviter le rognage)
             ctx.fillStyle = "white";
-            ctx.font = "bold 15px sans-serif";
+            ctx.font = "bold 14px sans-serif";
+            ctx.textAlign = "left";
             ctx.fillText("SCORE : " + score, 40, 28);
-            ctx.fillText("RECORD : " + highScore, 40, 48);
-            ctx.fillText("VIT : " + Math.floor(currentSpeed * 25) + " km/h", canvas.width - 115, 28);
+            ctx.fillText("PIÈCES : " + money + " 🪙", 40, 48);
+            ctx.textAlign = "right";
+            ctx.fillText("VIT : " + Math.floor(currentSpeed * 25) + " km/h", canvas.width - 40, 28);
+            ctx.textAlign = "left";
 
             if (Math.random() < 0.022 + (score * 0.00005)) {
                 spawnTraffic();
             }
 
-            requestAnimationFrame(update);
+            requestAnimationFrame(updateGame);
         }
 
-        function checkGameOverState() {
-            if (isGameOver) {
+        // Boucle principale d'affichage des menus et du game over
+        function drawUI() {
+            if (gameState === 'PLAYING') {
+                requestAnimationFrame(drawUI);
+                return;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = "#1e1e2f";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === 'MENU') {
+                canvas.style.cursor = "default";
+                ctx.textAlign = "center";
+                ctx.fillStyle = "#ffcc00";
+                ctx.font = "bold 30px sans-serif";
+                ctx.fillText("COURSE NOCTURNE", canvas.width / 2, 100);
+
+                ctx.fillStyle = "white";
+                ctx.font = "16px sans-serif";
+                ctx.fillText("🪙 Pièces : " + money, canvas.width / 2, 150);
+                ctx.fillText("🏆 Meilleur Score : " + highScore, canvas.width / 2, 180);
+
+                drawButton(canvas.width / 2 - 100, 240, 200, 50, "#4CAF50", "JOUER");
+                drawButton(canvas.width / 2 - 100, 310, 200, 50, "#2196F3", "GARAGE / BOUTIQUE");
+
+            } else if (gameState === 'GARAGE') {
+                canvas.style.cursor = "default";
+                ctx.textAlign = "center";
+                ctx.fillStyle = "#2196F3";
+                ctx.font = "bold 26px sans-serif";
+                ctx.fillText("GARAGE & BOUTIQUE", canvas.width / 2, 45);
+
+                ctx.fillStyle = "white";
+                ctx.font = "14px sans-serif";
+                ctx.fillText("🪙 Solde : " + money + " pièces", canvas.width / 2, 75);
+
+                ctx.fillStyle = "#ffcc00";
+                ctx.font = "bold 15px sans-serif";
+                ctx.fillText("— Peintures de la Voiture —", canvas.width / 2, 105);
+
+                let carKeys = Object.keys(carsData);
+                carKeys.forEach((carName, index) => {
+                    let y = 125 + index * 40;
+                    let isUnlocked = unlockedCars.includes(carName);
+                    let isSelected = currentCar === carName;
+
+                    ctx.fillStyle = isSelected ? "#4CAF50" : "#333";
+                    ctx.fillRect(30, y, canvas.width - 60, 32);
+
+                    ctx.fillStyle = "white";
+                    ctx.font = "13px sans-serif";
+                    ctx.textAlign = "left";
+                    ctx.fillText(carName + (isSelected ? " (Équipé)" : ""), 45, y + 21);
+
+                    ctx.textAlign = "right";
+                    if (isUnlocked) {
+                        ctx.fillText("Possédé", canvas.width - 45, y + 21);
+                    } else {
+                        ctx.fillText(carsData[carName].price + " 🪙", canvas.width - 45, y + 21);
+                    }
+                });
+
+                ctx.textAlign = "center";
+                ctx.fillStyle = "#ffcc00";
+                ctx.font = "bold 15px sans-serif";
+                ctx.fillText("— Décors de Route —", canvas.width / 2, 305);
+
+                let roadKeys = Object.keys(roadsData);
+                roadKeys.forEach((roadName, index) => {
+                    let y = 325 + index * 40;
+                    let isUnlocked = unlockedRoads.includes(roadName);
+                    let isSelected = currentRoad === roadName;
+
+                    ctx.fillStyle = isSelected ? "#4CAF50" : "#333";
+                    ctx.fillRect(30, y, canvas.width - 60, 32);
+
+                    ctx.fillStyle = "white";
+                    ctx.font = "13px sans-serif";
+                    ctx.textAlign = "left";
+                    ctx.fillText(roadName + (isSelected ? " (Actif)" : ""), 45, y + 21);
+
+                    ctx.textAlign = "right";
+                    if (isUnlocked) {
+                        ctx.fillText("Débloqué", canvas.width - 45, y + 21);
+                    } else {
+                        ctx.fillText(roadsData[roadName].price + " 🪙", canvas.width - 45, y + 21);
+                    }
+                });
+
+                drawButton(canvas.width / 2 - 100, 530, 200, 38, "#777", "RETOUR AU MENU");
+
+            } else if (gameState === 'GAMEOVER') {
+                canvas.style.cursor = "default";
                 ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
                 ctx.textAlign = "center";
                 ctx.fillStyle = "#ff3333";
-                ctx.font = "bold 40px sans-serif";
-                ctx.fillText("CRASH !", canvas.width / 2, canvas.height / 2 - 50);
+                ctx.font = "bold 38px sans-serif";
+                ctx.fillText("CRASH !", canvas.width / 2, 130);
                 
-                ctx.font = "18px sans-serif";
+                ctx.font = "16px sans-serif";
                 ctx.fillStyle = "#ffcc00";
-                ctx.fillText("Le M52B20 a calé...", canvas.width / 2, canvas.height / 2 - 15);
+                ctx.fillText("Le M52B20 a calé...", canvas.width / 2, 165);
                 
                 ctx.fillStyle = "white";
-                ctx.font = "18px sans-serif";
-                ctx.fillText("Score final : " + score, canvas.width / 2, canvas.height / 2 + 20);
-                ctx.fillText("Meilleur Score : " + highScore, canvas.width / 2, canvas.height / 2 + 48);
+                ctx.font = "16px sans-serif";
+                ctx.fillText("Score final : " + score, canvas.width / 2, 210);
+                ctx.fillText("Pièces gagnées : +" + earnedMoney + " 🪙", canvas.width / 2, 240);
+                ctx.fillText("Solde total : " + money + " 🪙", canvas.width / 2, 270);
 
-                // Bouton Rejouer parfaitement centré
-                ctx.fillStyle = "#4CAF50";
-                let btnX = canvas.width / 2 - 75;
-                let btnY = canvas.height / 2 + 75;
-                ctx.fillRect(btnX, btnY, 150, 40);
-
-                ctx.fillStyle = "white";
-                ctx.font = "bold 16px sans-serif";
-                ctx.textBaseline = "middle";
-                ctx.fillText("REJOUER", canvas.width / 2, btnY + 20);
-                ctx.textBaseline = "alphabetic"; // Reset
-                ctx.textAlign = "left"; // Reset
-
-                canvas.style.cursor = "pointer";
-            } else {
-                requestAnimationFrame(checkGameOverState);
+                drawButton(canvas.width / 2 - 100, 330, 200, 45, "#4CAF50", "REJOUER");
+                drawButton(canvas.width / 2 - 100, 395, 200, 45, "#2196F3", "MENU PRINCIPAL");
             }
+
+            requestAnimationFrame(drawUI);
+        }
+
+        function drawButton(x, y, w, h, color, text) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, w, h);
+            ctx.fillStyle = "white";
+            ctx.font = "bold 15px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(text, x + w / 2, y + h / 2);
+            ctx.textBaseline = "alphabetic";
+            ctx.textAlign = "left";
         }
 
         canvas.addEventListener("click", function(e) {
-            if (isGameOver) {
-                const rect = canvas.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
 
-                let btnX = canvas.width / 2 - 75;
-                let btnY = canvas.height / 2 + 75;
+            if (gameState === 'MENU') {
+                if (mouseX >= canvas.width/2 - 100 && mouseX <= canvas.width/2 + 100 && mouseY >= 240 && mouseY <= 290) {
+                    startGame();
+                } else if (mouseX >= canvas.width/2 - 100 && mouseX <= canvas.width/2 + 100 && mouseY >= 310 && mouseY <= 360) {
+                    gameState = 'GARAGE';
+                }
+            } else if (gameState === 'GARAGE') {
+                if (mouseX >= canvas.width/2 - 100 && mouseX <= canvas.width/2 + 100 && mouseY >= 530 && mouseY <= 568) {
+                    gameState = 'MENU';
+                    saveGame();
+                    return;
+                }
 
-                if (mouseX >= btnX && mouseX <= btnX + 150 &&
-                    mouseY >= btnY && mouseY <= btnY + 40) {
-                    isGameOver = false;
-                    score = 0;
-                    gameSpeed = 4;
-                    traffic = [];
-                    player.x = 175;
-                    canvas.style.cursor = "default";
-                    update();
-                    checkGameOverState();
+                let carKeys = Object.keys(carsData);
+                carKeys.forEach((carName, index) => {
+                    let y = 125 + index * 40;
+                    if (mouseX >= 30 && mouseX <= canvas.width - 30 && mouseY >= y && mouseY <= y + 32) {
+                        if (unlockedCars.includes(carName)) {
+                            currentCar = carName;
+                            playSound('buy');
+                        } else {
+                            let price = carsData[carName].price;
+                            if (money >= price) {
+                                money -= price;
+                                unlockedCars.push(carName);
+                                currentCar = carName;
+                                playSound('buy');
+                                saveGame();
+                            }
+                        }
+                    }
+                });
+
+                let roadKeys = Object.keys(roadsData);
+                roadKeys.forEach((roadName, index) => {
+                    let y = 325 + index * 40;
+                    if (mouseX >= 30 && mouseX <= canvas.width - 30 && mouseY >= y && mouseY <= y + 32) {
+                        if (unlockedRoads.includes(roadName)) {
+                            currentRoad = roadName;
+                            playSound('buy');
+                        } else {
+                            let price = roadsData[roadName].price;
+                            if (money >= price) {
+                                money -= price;
+                                unlockedRoads.push(roadName);
+                                currentRoad = roadName;
+                                playSound('buy');
+                                saveGame();
+                            }
+                        }
+                    }
+                });
+
+            } else if (gameState === 'GAMEOVER') {
+                if (mouseX >= canvas.width/2 - 100 && mouseX <= canvas.width/2 + 100 && mouseY >= 330 && mouseY <= 375) {
+                    startGame();
+                } else if (mouseX >= canvas.width/2 - 100 && mouseX <= canvas.width/2 + 100 && mouseY >= 395 && mouseY <= 440) {
+                    gameState = 'MENU';
                 }
             }
         });
 
-        update();
-        checkGameOverState();
+        function startGame() {
+            gameState = 'PLAYING';
+            score = 0;
+            gameSpeed = 4;
+            traffic = [];
+            player.x = 175;
+            updateGame();
+        }
+
+        // Lancement de la boucle d'interface principale
+        drawUI();
     </script>
 </body>
 </html>
