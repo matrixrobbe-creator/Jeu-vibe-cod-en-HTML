@@ -37,12 +37,46 @@
     </div>
     
     <div class="instructions">
-        Utilise les flèches GAUCHE et DROITE (ou Q et D) pour piloter.
+        Flèches GAUCHE/DROITE (ou Q/D) pour piloter | ESPACE pour le Boost !
     </div>
 
     <script>
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
+
+        // Gestion Audio Web API
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'crash') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            } else if (type === 'boost') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(450, audioCtx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.2);
+            }
+        }
 
         // Paramètres de la voiture du joueur
         let player = {
@@ -50,50 +84,56 @@
             y: 480,
             width: 45,
             height: 80,
-            speed: 6,
-            dx: 0
+            speed: 6
         };
 
         let traffic = [];
         let score = 0;
+        let highScore = localStorage.getItem("e39_high_score") || 0;
         let isGameOver = false;
         let gameSpeed = 4;
+        let isBoosting = false;
 
-        // Gestion des touches du clavier (mouvement fluide)
         let keys = {};
-        window.addEventListener("keydown", (e) => { keys[e.key] = true; });
+        window.addEventListener("keydown", (e) => { 
+            keys[e.key] = true; 
+            initAudio();
+            if (e.key === " " && !isBoosting && !isGameOver) {
+                isBoosting = true;
+                playSound('boost');
+                setTimeout(() => { isBoosting = false; }, 800); // Boost de 0.8s
+            }
+        });
         window.addEventListener("keyup", (e) => { keys[e.key] = false; });
 
-        // Fonction pour dessiner la voiture du joueur (Style E39 / Oxford Green)
+        // Dessin de la E39 (Oxford Green)
         function drawPlayer() {
-            // Carrosserie principale
-            ctx.fillStyle = "#1b3022"; // Oxford Green inspiré
+            if (isBoosting) {
+                ctx.fillStyle = "rgba(135, 206, 250, 0.4)";
+                ctx.fillRect(player.x - 4, player.y + 10, player.width + 8, player.height + 15);
+            }
+
+            ctx.fillStyle = "#1b3022"; 
             ctx.fillRect(player.x, player.y, player.width, player.height);
             
-            // Toit / Habitacle
             ctx.fillStyle = "#111";
             ctx.fillRect(player.x + 6, player.y + 22, player.width - 12, 35);
 
-            // Pare-brise & Lunette arrière
             ctx.fillStyle = "#87CEFA";
             ctx.fillRect(player.x + 8, player.y + 24, player.width - 16, 12);
             ctx.fillRect(player.x + 8, player.y + 43, player.width - 16, 10);
             
-            // Phares avant (blancs/jaunes)
             ctx.fillStyle = "#fffae6";
             ctx.fillRect(player.x + 4, player.y, 8, 4);
             ctx.fillRect(player.x + player.width - 12, player.y, 8, 4);
 
-            // Feux arrière
             ctx.fillStyle = "#ff0000";
             ctx.fillRect(player.x + 4, player.y + player.height - 4, 10, 4);
             ctx.fillRect(player.x + player.width - 14, player.y + player.height - 4, 10, 4);
         }
 
-        // Fonction pour générer le trafic adverse
         function spawnTraffic() {
             let carWidth = 45;
-            // Limiter l'apparition dans les 3 voies de l'autoroute (entre x = 40 et x = 310)
             let lanes = [50, 145, 240, 305];
             let randomX = lanes[Math.floor(Math.random() * lanes.length)];
 
@@ -107,91 +147,83 @@
             });
         }
 
-        // Moteur principal du jeu
         function update() {
             if (isGameOver) return;
 
-            // Effacer l'écran à chaque frame
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // --- Décor de la route ---
-            // Asphalte
+            // Route & Accotements
             ctx.fillStyle = "#333";
             ctx.fillRect(30, 0, canvas.width - 60, canvas.height);
 
-            // Accotements / Herbe
             ctx.fillStyle = "#1a4d1a";
             ctx.fillRect(0, 0, 30, canvas.height);
             ctx.fillRect(canvas.width - 30, 0, 30, canvas.height);
 
-            // Lignes centrales discontinues (Animation de défilement)
+            // Lignes de route animées
+            let currentSpeed = isBoosting ? gameSpeed * 2.2 : gameSpeed;
             ctx.strokeStyle = "#fff";
             ctx.setLineDash([25, 25]);
             ctx.lineWidth = 4;
-            ctx.lineDashOffset = -Date.now() / 15; 
+            ctx.lineDashOffset -= currentSpeed * 1.5;
 
-            // Ligne de séparation voie 1
             ctx.beginPath();
-            ctx.moveTo(125, 0);
-            ctx.lineTo(125, canvas.height);
-            ctx.stroke();
-
-            // Ligne de séparation voie 2
+            ctx.moveTo(125, 0); ctx.lineTo(125, canvas.height); ctx.stroke();
             ctx.beginPath();
-            ctx.moveTo(220, 0);
-            ctx.lineTo(220, canvas.height);
-            ctx.stroke();
+            ctx.moveTo(220, 0); ctx.lineTo(220, canvas.height); ctx.stroke();
 
-            // --- Gestion des mouvements du joueur ---
+            // Mouvements joueur
+            let currentMoveSpeed = isBoosting ? player.speed * 1.6 : player.speed;
             if ((keys["ArrowLeft"] || keys["q"] || keys["Q"]) && player.x > 35) {
-                player.x -= player.speed;
+                player.x -= currentMoveSpeed;
             }
             if ((keys["ArrowRight"] || keys["d"] || keys["D"]) && player.x + player.width < canvas.width - 35) {
-                player.x += player.speed;
+                player.x += currentMoveSpeed;
             }
 
             drawPlayer();
 
-            // --- Gestion des voitures ennemies (Trafic) ---
+            // Trafic
             for (let i = 0; i < traffic.length; i++) {
                 let car = traffic[i];
-                car.y += gameSpeed; // Les voitures défilent par rapport à la route
+                car.y += currentSpeed;
 
-                // Dessin de la voiture ennemie
                 ctx.fillStyle = car.color;
                 ctx.fillRect(car.x, car.y, car.width, car.height);
                 
-                // Pare-brise ennemi
                 ctx.fillStyle = "#222";
                 ctx.fillRect(car.x + 5, car.y + 20, car.width - 10, 20);
 
-                // Détection de collision (AABB)
+                // Collision
                 if (player.x < car.x + car.width &&
                     player.x + player.width > car.x &&
                     player.y < car.y + car.height &&
                     player.y + player.height > car.y) {
                     isGameOver = true;
+                    playSound('crash');
+                    if (score > highScore) {
+                        highScore = score;
+                        localStorage.setItem("e39_high_score", highScore);
+                    }
                 }
             }
 
-            // Nettoyage des voitures sorties de l'écran et mise à jour du score
             traffic = traffic.filter(car => {
                 if (car.y > canvas.height) {
-                    score += 10;
-                    // Augmentation progressive de la difficulté
+                    score += isBoosting ? 20 : 10;
                     if (score % 50 === 0) gameSpeed += 0.4;
                     return false;
                 }
                 return true;
             });
 
-            // Affichage du Score et de la Vitesse simulée
+            // Affichage HUD
             ctx.fillStyle = "white";
-            ctx.font = "bold 16px sans-serif";
-            ctx.fillText("SCORE : " + score, 45, 30);
-            ctx.fillText("VIT : " + Math.floor(gameSpeed * 25) + " km/h", canvas.width - 110, 30);
+            ctx.font = "bold 15px sans-serif";
+            ctx.fillText("SCORE : " + score, 40, 28);
+            ctx.fillText("RECORD : " + highScore, 40, 48);
+            ctx.fillText("VIT : " + Math.floor(currentSpeed * 25) + " km/h", canvas.width - 115, 28);
 
-            // Probabilité d'apparition dynamique du trafic
             if (Math.random() < 0.022 + (score * 0.00005)) {
                 spawnTraffic();
             }
@@ -199,48 +231,55 @@
             requestAnimationFrame(update);
         }
 
-        // Écran de Game Over stylisé avec option de redémarrage
         function checkGameOverState() {
             if (isGameOver) {
                 ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
+                ctx.textAlign = "center";
                 ctx.fillStyle = "#ff3333";
                 ctx.font = "bold 40px sans-serif";
-                ctx.fillText("CRASH !", canvas.width / 2, canvas.height / 2 - 40);
+                ctx.fillText("CRASH !", canvas.width / 2, canvas.height / 2 - 50);
                 
                 ctx.font = "18px sans-serif";
                 ctx.fillStyle = "#ffcc00";
-                ctx.fillText("Le M52B20 a calé...", canvas.width / 2, canvas.height / 2);
+                ctx.fillText("Le M52B20 a calé...", canvas.width / 2, canvas.height / 2 - 15);
                 
                 ctx.fillStyle = "white";
-                ctx.font = "20px sans-serif";
-                ctx.fillText("Score final : " + score, canvas.width / 2, canvas.height / 2 + 40);
+                ctx.font = "18px sans-serif";
+                ctx.fillText("Score final : " + score, canvas.width / 2, canvas.height / 2 + 20);
+                ctx.fillText("Meilleur Score : " + highScore, canvas.width / 2, canvas.height / 2 + 48);
 
-                // Bouton Rejouer cliquable
+                // Bouton Rejouer parfaitement centré
                 ctx.fillStyle = "#4CAF50";
-                ctx.fillRect(canvas.width / 2 - 75, canvas.height / 2 + 75, 150, 40);
+                let btnX = canvas.width / 2 - 75;
+                let btnY = canvas.height / 2 + 75;
+                ctx.fillRect(btnX, btnY, 150, 40);
+
                 ctx.fillStyle = "white";
                 ctx.font = "bold 16px sans-serif";
-                ctx.fillText("REJOUER", canvas.width / 2, canvas.height / 2 + 100);
-                
+                ctx.textBaseline = "middle";
+                ctx.fillText("REJOUER", canvas.width / 2, btnY + 20);
+                ctx.textBaseline = "alphabetic"; // Reset
+                ctx.textAlign = "left"; // Reset
+
                 canvas.style.cursor = "pointer";
             } else {
                 requestAnimationFrame(checkGameOverState);
             }
         }
 
-        // Écouteur de clic pour relancer la partie depuis l'écran de fin
         canvas.addEventListener("click", function(e) {
             if (isGameOver) {
                 const rect = canvas.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
 
-                // Coordonnées du bouton "Rejouer"
-                if (mouseX >= canvas.width / 2 - 75 && mouseX <= canvas.width / 2 + 75 &&
-                    mouseY >= canvas.height / 2 + 75 && mouseY <= canvas.height / 2 + 115) {
-                    // Reset des variables
+                let btnX = canvas.width / 2 - 75;
+                let btnY = canvas.height / 2 + 75;
+
+                if (mouseX >= btnX && mouseX <= btnX + 150 &&
+                    mouseY >= btnY && mouseY <= btnY + 40) {
                     isGameOver = false;
                     score = 0;
                     gameSpeed = 4;
@@ -253,7 +292,6 @@
             }
         });
 
-        // Lancer le jeu
         update();
         checkGameOverState();
     </script>
