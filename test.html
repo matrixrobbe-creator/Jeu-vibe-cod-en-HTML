@@ -2,23 +2,27 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Autoroute Rétro</title>
+    <title>Course Nocturne - E39 Edition</title>
     <style>
         body {
-            background-color: #222;
+            background-color: #1a1a1a;
             color: white;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             text-align: center;
             margin: 0;
             padding: 20px;
         }
-        h1 { margin-bottom: 5px; }
-        p { color: #aaa; margin-bottom: 20px; }
+        h1 { margin-bottom: 5px; color: #ffcc00; text-shadow: 0 0 10px rgba(255, 204, 0, 0.5); }
+        p { color: #aaa; margin-bottom: 15px; }
+        .game-container {
+            position: relative;
+            display: inline-block;
+        }
         canvas {
-            background-color: #444;
-            border: 4px solid #888;
-            border-radius: 5px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+            background-color: #333;
+            border: 4px solid #555;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9);
         }
         .instructions { margin-top: 15px; font-weight: bold; color: #4CAF50; }
     </style>
@@ -26,12 +30,14 @@
 <body>
 
     <h1>Course Nocturne</h1>
-    <p>Fais chanter le 6 cylindres et évite le trafic !</p>
+    <p>Fais chanter le 6 cylindres (M52B20TU) et évite le trafic !</p>
     
-    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+    </div>
     
     <div class="instructions">
-        Utilise les flèches GAUCHE et DROITE de ton clavier pour te déporter.
+        Utilise les flèches GAUCHE et DROITE (ou Q et D) pour piloter.
     </div>
 
     <script>
@@ -41,42 +47,63 @@
         // Paramètres de la voiture du joueur
         let player = {
             x: 175,
-            y: 500,
-            width: 50,
+            y: 480,
+            width: 45,
             height: 80,
-            speed: 25 // Nervosité de la direction
+            speed: 6,
+            dx: 0
         };
 
         let traffic = [];
         let score = 0;
         let isGameOver = false;
-        let gameSpeed = 5;
+        let gameSpeed = 4;
 
-        // Fonction pour dessiner la voiture (Gris argent)
+        // Gestion des touches du clavier (mouvement fluide)
+        let keys = {};
+        window.addEventListener("keydown", (e) => { keys[e.key] = true; });
+        window.addEventListener("keyup", (e) => { keys[e.key] = false; });
+
+        // Fonction pour dessiner la voiture du joueur (Style E39 / Oxford Green)
         function drawPlayer() {
-            ctx.fillStyle = "#C0C0C0"; 
+            // Carrosserie principale
+            ctx.fillStyle = "#1b3022"; // Oxford Green inspiré
             ctx.fillRect(player.x, player.y, player.width, player.height);
             
-            // Pare-brise
+            // Toit / Habitacle
+            ctx.fillStyle = "#111";
+            ctx.fillRect(player.x + 6, player.y + 22, player.width - 12, 35);
+
+            // Pare-brise & Lunette arrière
             ctx.fillStyle = "#87CEFA";
-            ctx.fillRect(player.x + 5, player.y + 15, 40, 20);
+            ctx.fillRect(player.x + 8, player.y + 24, player.width - 16, 12);
+            ctx.fillRect(player.x + 8, player.y + 43, player.width - 16, 10);
             
+            // Phares avant (blancs/jaunes)
+            ctx.fillStyle = "#fffae6";
+            ctx.fillRect(player.x + 4, player.y, 8, 4);
+            ctx.fillRect(player.x + player.width - 12, player.y, 8, 4);
+
             // Feux arrière
-            ctx.fillStyle = "red";
-            ctx.fillRect(player.x + 5, player.y + 75, 12, 5);
-            ctx.fillRect(player.x + 33, player.y + 75, 12, 5);
+            ctx.fillStyle = "#ff0000";
+            ctx.fillRect(player.x + 4, player.y + player.height - 4, 10, 4);
+            ctx.fillRect(player.x + player.width - 14, player.y + player.height - 4, 10, 4);
         }
 
-        // Fonction pour générer le trafic
+        // Fonction pour générer le trafic adverse
         function spawnTraffic() {
-            let carWidth = 50;
-            let randomX = Math.floor(Math.random() * (canvas.width - carWidth));
+            let carWidth = 45;
+            // Limiter l'apparition dans les 3 voies de l'autoroute (entre x = 40 et x = 310)
+            let lanes = [50, 145, 240, 305];
+            let randomX = lanes[Math.floor(Math.random() * lanes.length)];
+
             traffic.push({
                 x: randomX,
                 y: -100,
                 width: carWidth,
                 height: 80,
-                speed: gameSpeed + (Math.random() * 2)
+                speed: gameSpeed * 0.6 + (Math.random() * 1.5),
+                color: ["#cc0000", "#002b80", "#e6b800", "#555555"][Math.floor(Math.random() * 4)]
             });
         }
 
@@ -87,26 +114,58 @@
             // Effacer l'écran à chaque frame
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Lignes de la route
-            ctx.fillStyle = "#fff";
-            ctx.setLineDash([20, 20]);
+            // --- Décor de la route ---
+            // Asphalte
+            ctx.fillStyle = "#333";
+            ctx.fillRect(30, 0, canvas.width - 60, canvas.height);
+
+            // Accotements / Herbe
+            ctx.fillStyle = "#1a4d1a";
+            ctx.fillRect(0, 0, 30, canvas.height);
+            ctx.fillRect(canvas.width - 30, 0, 30, canvas.height);
+
+            // Lignes centrales discontinues (Animation de défilement)
+            ctx.strokeStyle = "#fff";
+            ctx.setLineDash([25, 25]);
+            ctx.lineWidth = 4;
+            ctx.lineDashOffset = -Date.now() / 15; 
+
+            // Ligne de séparation voie 1
             ctx.beginPath();
-            ctx.moveTo(canvas.width / 2, 0);
-            ctx.lineTo(canvas.width / 2, canvas.height);
-            ctx.lineWidth = 5;
-            ctx.lineDashOffset = -Date.now() / 20; // Animation de la route
+            ctx.moveTo(125, 0);
+            ctx.lineTo(125, canvas.height);
             ctx.stroke();
+
+            // Ligne de séparation voie 2
+            ctx.beginPath();
+            ctx.moveTo(220, 0);
+            ctx.lineTo(220, canvas.height);
+            ctx.stroke();
+
+            // --- Gestion des mouvements du joueur ---
+            if ((keys["ArrowLeft"] || keys["q"] || keys["Q"]) && player.x > 35) {
+                player.x -= player.speed;
+            }
+            if ((keys["ArrowRight"] || keys["d"] || keys["D"]) && player.x + player.width < canvas.width - 35) {
+                player.x += player.speed;
+            }
 
             drawPlayer();
 
-            // Gestion des voitures ennemies
-            ctx.fillStyle = "#FF4500"; // Voitures rouges
+            // --- Gestion des voitures ennemies (Trafic) ---
             for (let i = 0; i < traffic.length; i++) {
                 let car = traffic[i];
-                car.y += car.speed;
-                ctx.fillRect(car.x, car.y, car.width, car.height);
+                car.y += gameSpeed; // Les voitures défilent par rapport à la route
 
-                // Détection de collision
+                // Dessin de la voiture ennemie
+                ctx.fillStyle = car.color;
+                ctx.fillRect(car.x, car.y, car.width, car.height);
+                
+                // Pare-brise ennemi
+                ctx.fillStyle = "#222";
+                ctx.fillRect(car.x + 5, car.y + 20, car.width - 10, 20);
+
+                // Détection de collision (AABB)
                 if (player.x < car.x + car.width &&
                     player.x + player.width > car.x &&
                     player.y < car.y + car.height &&
@@ -115,64 +174,88 @@
                 }
             }
 
-            // Nettoyage et Score
+            // Nettoyage des voitures sorties de l'écran et mise à jour du score
             traffic = traffic.filter(car => {
                 if (car.y > canvas.height) {
-                    score++;
-                    // Augmenter la difficulté
-                    if (score % 5 === 0) gameSpeed += 0.5;
+                    score += 10;
+                    // Augmentation progressive de la difficulté
+                    if (score % 50 === 0) gameSpeed += 0.4;
                     return false;
                 }
                 return true;
             });
 
-            // Affichage du Score
+            // Affichage du Score et de la Vitesse simulée
             ctx.fillStyle = "white";
-            ctx.font = "20px sans-serif";
-            ctx.fillText("Score : " + score, 15, 30);
+            ctx.font = "bold 16px sans-serif";
+            ctx.fillText("SCORE : " + score, 45, 30);
+            ctx.fillText("VIT : " + Math.floor(gameSpeed * 25) + " km/h", canvas.width - 110, 30);
 
-            // Probabilité d'apparition d'une nouvelle voiture
-            if (Math.random() < 0.02 + (score * 0.0005)) {
+            // Probabilité d'apparition dynamique du trafic
+            if (Math.random() < 0.022 + (score * 0.00005)) {
                 spawnTraffic();
             }
 
-            // Boucle ou Fin
+            requestAnimationFrame(update);
+        }
+
+        // Écran de Game Over stylisé avec option de redémarrage
+        function checkGameOverState() {
             if (isGameOver) {
-                ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+                ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = "white";
-                ctx.font = "bold 40px sans-serif";
-                ctx.fillText("CRASH !", 120, canvas.height / 2 - 20);
                 
-                ctx.font = "20px sans-serif";
+                ctx.fillStyle = "#ff3333";
+                ctx.font = "bold 40px sans-serif";
+                ctx.fillText("CRASH !", canvas.width / 2, canvas.height / 2 - 40);
+                
+                ctx.font = "18px sans-serif";
                 ctx.fillStyle = "#ffcc00";
-                ctx.fillText("Le M52B20 a calé...", 110, canvas.height / 2 + 20);
+                ctx.fillText("Le M52B20 a calé...", canvas.width / 2, canvas.height / 2);
+                
                 ctx.fillStyle = "white";
-                ctx.fillText("Score final : " + score, 130, canvas.height / 2 + 60);
-                ctx.font = "16px sans-serif";
-                ctx.fillText("Rafraîchis la page (F5) pour redémarrer.", 60, canvas.height / 2 + 100);
+                ctx.font = "20px sans-serif";
+                ctx.fillText("Score final : " + score, canvas.width / 2, canvas.height / 2 + 40);
+
+                // Bouton Rejouer cliquable
+                ctx.fillStyle = "#4CAF50";
+                ctx.fillRect(canvas.width / 2 - 75, canvas.height / 2 + 75, 150, 40);
+                ctx.fillStyle = "white";
+                ctx.font = "bold 16px sans-serif";
+                ctx.fillText("REJOUER", canvas.width / 2, canvas.height / 2 + 100);
+                
+                canvas.style.cursor = "pointer";
             } else {
-                requestAnimationFrame(update);
+                requestAnimationFrame(checkGameOverState);
             }
         }
 
-        // Contrôles au clavier
-        document.addEventListener("keydown", function(event) {
-            if (event.key === "ArrowLeft" && player.x > 0) {
-                player.x -= player.speed;
-            }
-            if (event.key === "ArrowRight" && player.x + player.width < canvas.width) {
-                player.x += player.speed;
+        // Écouteur de clic pour relancer la partie depuis l'écran de fin
+        canvas.addEventListener("click", function(e) {
+            if (isGameOver) {
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                // Coordonnées du bouton "Rejouer"
+                if (mouseX >= canvas.width / 2 - 75 && mouseX <= canvas.width / 2 + 75 &&
+                    mouseY >= canvas.height / 2 + 75 && mouseY <= canvas.height / 2 + 115) {
+                    // Reset des variables
+                    isGameOver = false;
+                    score = 0;
+                    gameSpeed = 4;
+                    traffic = [];
+                    player.x = 175;
+                    canvas.style.cursor = "default";
+                    update();
+                    checkGameOverState();
+                }
             }
         });
 
         // Lancer le jeu
         update();
+        checkGameOverState();
     </script>
 </body>
 </html>
-
-
-
-Projet de stage :
-annotation audio mix avec un projet cadré internve avec objectif prédéfini pour etre 
